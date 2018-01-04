@@ -4,6 +4,7 @@ package event
 import (
 	"fmt"
 	"reflect"
+	"sync"
 )
 
 // Handler is a convenience type that represents an event handler function
@@ -25,6 +26,9 @@ type Hub interface {
 type hub struct {
 	// handlers contains a map of all events and their handlers
 	handlers map[string][]Handler
+
+	// mu prevents race conditions for the handlers map
+	mu sync.Mutex
 }
 
 // NewHub creates a new event hub
@@ -49,6 +53,10 @@ func (h *hub) Handle(e string, fn Handler) error {
 		return fmt.Errorf("handler for event \"%s\" does not have one parameter", e)
 	}
 
+	// Acquire a lock before appending to the handlers slice
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	// Add the function to the event handlers map
 	h.handlers[e] = append(h.handlers[e], fn)
 
@@ -57,6 +65,10 @@ func (h *hub) Handle(e string, fn Handler) error {
 
 // Send sends data to an event
 func (h *hub) Send(e string, p Payload) error {
+	// Acquire a lock before start processing the event
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	// Make sure that we have event handlers for the event
 	if _, ok := h.handlers[e]; !ok {
 		return fmt.Errorf("no event handler added for event \"%s\"", e)
